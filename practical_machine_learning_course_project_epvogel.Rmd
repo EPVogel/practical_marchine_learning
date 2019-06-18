@@ -64,7 +64,7 @@ prediction_set <- testing_red
 
 Instead of performing a further exploratory analysis the reduced dataset will be used to train a robust classifier with a generally good performance. A classifier sufficing this requirement is a random forest classifier. This untuned classifier is used as benchmark.
 
-Caret comes with inbuild cross-validation to estimate the accuracy of the predictor. We therefore use the entire training set. In the following 3-fold repeated cross-validation is performed to estimate the errors.
+Caret comes with inbuild cross-validation to estimate the out-of-sample accuracy of the predictor. We therefore use the entire training set. In the following 3-fold repeated cross-validation is performed to estimate the out-of-sample error.
 
 ```{r trainingSetup}
 #Define the train control, otherwise it will take a very long time to finish.
@@ -88,7 +88,7 @@ stopCluster(cl)
 predictor_rf
 ```
 
-Repeated cross-validation already yielded an in-sample accurary of almost 99%. The untuned random forest classifier is already performing very well and it will be used to predict the classes for the testing set.
+Repeated cross-validation already yielded an out-of-sample accurary of almost 99%. The untuned random forest classifier is already performing very well and it will be used to predict the classes for the testing set.
 
 Below is the resulting prediction:
 
