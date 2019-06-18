@@ -1,0 +1,144 @@
+Predicting exercise execution
+=============================
+
+This analysis is based on the publicly available Weight Lifting Exercises Dataset that describes the quality of execution of a specific weight-lifting exercise. The dataset consists of sensory measurements taken from a number of motion sensors that had been attached to the indivual performing the exercise. For a more detailed description of the dataset please consider <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har#dataset>.
+
+Retrieving the data and preprocessing
+-------------------------------------
+
+The data is downloaded from the source into the local directory of this markdown document.
+
+``` r
+#Download the files from the source
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile = "pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+```
+
+The data is loaded into dataframes.
+
+``` r
+library(caret)
+```
+
+    ## Warning: package 'caret' was built under R version 3.5.3
+
+    ## Loading required package: lattice
+
+    ## Loading required package: ggplot2
+
+``` r
+library(ggplot2)
+training_raw <- read.csv(file = "pml-training.csv")
+testing_raw <- read.csv(file = "pml-testing.csv")
+```
+
+The dataset describes the movements of the participants and it is a mixture of raw sensory readings i.e the measurement of a sensor at a certain time as well as derived quantities that summarize the sensory readings over a window. New windows are denoted by the new\_window variable. Naturally the derived quantities are NA for most rows of the data as they are only defined at the window boundaries.
+
+In this analysis we seek to classify the quality of each exercise execution by assigning 5 classes (taken from documention): exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+The testing set contains only 20 rows - each of which is a particular measurement during a motion. We therefore seek to classify an individual sensor measurement as one of the five classes. Hence, we cannot use any of the derived quantities but must use the raw readings.
+
+Variable Preselection
+---------------------
+
+We reduce the datasets to the variables that are avaiable in both sets - e.g. the sensory readings. Unfortunately the timeseries character of the data cannot be utilized in this analysis. The reason for this is that the provided timestamp information corresponds to absolute points in time. To be useful a conversion to a relative scale is necessary - e.g. relative with respect to the motion of a single exercise execution. This scaling cannot be applied to the testdata for which it has to be neglected. Hence, the analysis will purely focus on the sensor data space.
+
+``` r
+#Selecting the useful columns from the data
+#Training data
+training_red <- training_raw[,grep("^(roll|pitch|yaw|total|gyros|accel|magnet|classe)",names(training_raw),value=TRUE)]
+
+#Testing data
+testing_red <- testing_raw[,grep("^(roll|pitch|yaw|total|gyros|accel|magnet)",names(testing_raw),value=TRUE)]
+```
+
+The training data is split into a training and a testing set. Note that the testdata is called the prediction\_set in the following.
+
+``` r
+#Split the data into datasets
+set.seed(05042063)
+inTrain <- createDataPartition(training_red$classe, p = 3/4)[[1]]
+training_set <- training_red[inTrain,]
+testing_set <- training_red[-inTrain,]
+prediction_set <- testing_red
+```
+
+Classification of readings
+--------------------------
+
+Instead of performing a further exploratory analysis the reduced dataset will be used to train a robust classifier with a generally good performance. A classifier sufficing this requirement is a random forest classifier. This untuned classifier is used as benchmark.
+
+Caret comes with inbuild cross-validation to estimate the out-of-sample accuracy of the predictor. We therefore use the entire training set. In the following 3-fold repeated cross-validation is performed to estimate the out-of-sample error.
+
+``` r
+#Define the train control, otherwise it will take a very long time to finish.
+#Use repeated cross validation here
+control <- trainControl(method='repeatedcv', 
+                        number=3, 
+                        repeats=3)
+```
+
+To speed up the computation the doParallel package is used. A cluster is defined with as many cores as available minus one for the OS. By default carets train method allows parallel excution.
+
+``` r
+#use the deParallel package to speed up the computation
+library(doParallel)
+```
+
+    ## Warning: package 'doParallel' was built under R version 3.5.3
+
+    ## Loading required package: foreach
+
+    ## Warning: package 'foreach' was built under R version 3.5.3
+
+    ## Loading required package: iterators
+
+    ## Warning: package 'iterators' was built under R version 3.5.3
+
+    ## Loading required package: parallel
+
+``` r
+cl <- makeCluster(detectCores()-1)
+registerDoParallel(cl)
+
+#fit the model
+predictor_rf <- train(classe ~ ., method ="rf",data=training_set,trControl=control)
+
+stopCluster(cl)
+predictor_rf
+```
+
+    ## Random Forest 
+    ## 
+    ## 14718 samples
+    ##    52 predictor
+    ##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+    ## 
+    ## No pre-processing
+    ## Resampling: Cross-Validated (3 fold, repeated 3 times) 
+    ## Summary of sample sizes: 9812, 9811, 9813, 9811, 9812, 9813, ... 
+    ## Resampling results across tuning parameters:
+    ## 
+    ##   mtry  Accuracy   Kappa    
+    ##    2    0.9890386  0.9861319
+    ##   27    0.9898311  0.9871359
+    ##   52    0.9823574  0.9776803
+    ## 
+    ## Accuracy was used to select the optimal model using the largest value.
+    ## The final value used for the model was mtry = 27.
+
+Repeated cross-validation already yielded an out-of-sample accurary of almost 99%. The untuned random forest classifier is already performing very well and it will be used to predict the classes for the testing set.
+
+Below is the resulting prediction:
+
+``` r
+predict(predictor_rf, newdata = prediction_set)
+```
+
+    ##  [1] B A B A A E D B A A B C B A E E A B B B
+    ## Levels: A B C D E
+
+Summary
+-------
+
+It can be summarized that the random forest predictor is capable of classifying single sensory measurments into the available execution classes with a high accuracy. Further tuning of the model is not necessary.
